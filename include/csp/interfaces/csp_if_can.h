@@ -186,6 +186,9 @@ extern "C" {
  */
 typedef int (*csp_can_driver_tx_t)(void * driver_data, uint32_t id, const uint8_t * data, uint8_t dlc);
 
+#define CSP_CAN_MAX_CANFD_DEST_ALLOWLIST 16
+#define CSP_CAN_MAX_CANFD_DPORT_ALLOWLIST 16
+
 /**
  * Interface data (state information).
  */
@@ -193,6 +196,12 @@ typedef struct {
 	uint32_t cfp_packet_counter; /**< CFP Identification number - same number on all fragments from same CSP packet. */
 	csp_can_driver_tx_t tx_func; /**< Tx function */
 	csp_packet_t * pbufs; /**< PBUF queue */
+	uint8_t classic_frame_dlen; /**< Maximum Classical CAN payload bytes per fragment. */
+	uint8_t frame_dlen; /**< Maximum CAN/CAN-FD payload bytes per fragment. */
+	uint16_t canfd_dest_allowlist[CSP_CAN_MAX_CANFD_DEST_ALLOWLIST]; /**< Optional destination allowlist for CAN FD TX. */
+	uint8_t canfd_dest_allowlist_count; /**< Number of active destinations in canfd_dest_allowlist. */
+	uint8_t canfd_dport_allowlist[CSP_CAN_MAX_CANFD_DPORT_ALLOWLIST]; /**< Optional destination-port allowlist for CAN FD TX. */
+	uint8_t canfd_dport_allowlist_count; /**< Number of active destination ports in canfd_dport_allowlist. */
 } csp_can_interface_data_t;
 
 /**
@@ -225,6 +234,36 @@ int csp_can_remove_interface(csp_iface_t * iface);
  * @return #CSP_ERR_NONE on success, otherwise an error code.
  */
 int csp_can_tx(csp_iface_t * iface, uint16_t via, csp_packet_t *packet);
+
+/**
+ * Extract the CSP destination encoded in a CAN CFP identifier.
+ *
+ * @param[in] id CAN CFP identifier without CAN_EFF flags.
+ * @return destination node id encoded in the CFP identifier.
+ */
+uint16_t csp_can_get_dest_from_id(uint32_t id);
+
+/**
+ * Return whether this interface should transmit to \a dest using CAN FD.
+ *
+ * If the interface is CAN FD-capable and no allowlist is configured, CAN FD is
+ * enabled for every destination to preserve the historical behavior of the
+ * `COMM_CSP_SOCKETCAN_USE_CANFD=1` override.
+ *
+ * @param[in] iface CSP interface.
+ * @param[in] dest destination node id.
+ * @return non-zero when CAN FD should be used for TX, otherwise zero.
+ */
+int csp_can_dest_uses_canfd(const csp_iface_t * iface, uint16_t dest);
+
+/**
+ * Return the fragment payload size to use when transmitting to \a dest.
+ *
+ * @param[in] iface CSP interface.
+ * @param[in] dest destination node id.
+ * @return payload bytes per fragment for the selected wire format.
+ */
+uint8_t csp_can_tx_frame_size(const csp_iface_t * iface, uint16_t dest);
 
 /**
  * Process received CAN frame.

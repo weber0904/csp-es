@@ -17,6 +17,8 @@ FILE * logfile;
 static void * task_capture(void * ctx) {
 
     int ret;
+    const size_t header_size = (csp_conf.version == 2) ? 6U : 5U;
+    const size_t max_frame_size = sizeof(((csp_packet_t *)0)->data) + header_size;
 
 	csp_print("Capture/logging task listening on %s\n", sub_str);
 
@@ -34,8 +36,8 @@ static void * task_capture(void * ctx) {
     }
 
 
-	/* Allocated 'raw' CSP packet */
-	csp_packet_t * packet = malloc(1024);
+	/* Allocate a full CSP packet for decode/logging. */
+	csp_packet_t * packet = malloc(sizeof(csp_packet_t));
 	assert(packet != NULL);
 
 	if (logfile_name) {
@@ -48,7 +50,7 @@ static void * task_capture(void * ctx) {
 
 	while (1) {
 		zmq_msg_t msg;
-		zmq_msg_init_size(&msg, 1024);
+		zmq_msg_init(&msg);
 
 		/* Receive data */
 		if (zmq_msg_recv(&msg, subscriber, 0) < 0) {
@@ -59,9 +61,14 @@ static void * task_capture(void * ctx) {
 
 		size_t datalen = zmq_msg_size(&msg);
 		if (datalen < 5) {
-			csp_print("ZMQ: Too short datalen: %u\n", datalen);
+			csp_print("ZMQ: Too short datalen: %zu\n", datalen);
 			while (zmq_msg_recv(&msg, subscriber, ZMQ_NOBLOCK) > 0)
 				zmq_msg_close(&msg);
+			continue;
+		}
+		if (datalen > max_frame_size) {
+			csp_print("ZMQ: Frame too large datalen: %zu max: %zu\n", datalen, max_frame_size);
+			zmq_msg_close(&msg);
 			continue;
 		}
 
